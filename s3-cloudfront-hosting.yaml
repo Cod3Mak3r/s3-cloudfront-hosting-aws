@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Hosting estático en S3 con distribución en CloudFront"
+
+Resources:
+  StaticWebsiteBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "mi-sitio-web-${AWS::AccountId}"
+      WebsiteConfiguration:
+        IndexDocument: "index.html"
+        ErrorDocument: "error.html"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${StaticWebsiteBucket}/*"
+
+  CloudFrontOAI:
+    Type: "AWS::CloudFront::CloudFrontOriginAccessIdentity"
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "OAI for ${StaticWebsiteBucket}"
+
+  CloudFrontDistribution:
+    Type: "AWS::CloudFront::Distribution"
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: !Ref StaticWebsiteBucket
+            DomainName: !GetAtt StaticWebsiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+        Enabled: true
+        DefaultRootObject: "index.html"
+        DefaultCacheBehavior:
+          TargetOriginId: !Ref StaticWebsiteBucket
+          ViewerProtocolPolicy: "redirect-to-https"
+          AllowedMethods: ["GET", "HEAD"]
+          CachedMethods: ["GET", "HEAD"]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: "none"
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        PriceClass: "PriceClass_100"
+
+Outputs:
+  WebsiteURL:
+    Description: "URL del sitio web en S3"
+    Value: !Sub "http://${StaticWebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
+  CloudFrontURL:
+    Description: "URL del sitio con HTTPS en CloudFront"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
